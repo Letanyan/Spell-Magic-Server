@@ -41,6 +41,7 @@ func serverInit() {
 	// Levels
 	mux.HandleFunc("POST /api/v1/level/{$}", wrappers(apiAddLevel))
 	mux.HandleFunc("GET /api/v1/level/{$}", wrappers(apiGetLevel))
+	mux.HandleFunc("PUT /api/v1/level/{$}", wrappers(apiPutLevel))
 
 	mux.HandleFunc("GET /ping/{$}", wrappers(apiPing))
 
@@ -60,8 +61,9 @@ func apiPing(w http.ResponseWriter, r *http.Request) {
 // ----------------------------------------------------------------------
 
 func apiUserSignUp(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("name")
 	password := r.FormValue("password")
-	_, session_token, err := dbCreateUser(mainDB, password)
+	_, session_token, err := dbCreateUser(mainDB, name, password)
 	if didFail(err) {
 		// TODO: handle error
 		return
@@ -74,11 +76,22 @@ func apiUserSignIn(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	
 	_, session_token, err := dbSignInUser(mainDB, name, password)
+	if err == nil {
+		fmt.Println("in: ", session_token)
+		w.Header().Set("Kind", "SignIn")
+		w.Header().Set("Set-Cookie", fmt.Sprintf("user_token=%s; SameSite=Strict; Path=/", session_token))
+		w.Write([]byte(session_token))
+		return
+	}
+	_, session_token, err = dbCreateUser(mainDB, name, password)
 	if didFail(err) {
 		// TODO: handle error
 		return
 	}
-	w.Header().Add("Set-Cookie", fmt.Sprintf("user_token=%s; SameSite=Strict; Path=/", session_token))
+	fmt.Println("in: ", session_token)
+	w.Header().Set("Kind", "SignIn")
+	w.Header().Set("Set-Cookie", fmt.Sprintf("user_token=%s; SameSite=Strict; Path=/", session_token))
+	w.Write([]byte(session_token))
 }
 
 func apiValidSessionToken(r *http.Request) User {
@@ -131,11 +144,34 @@ func apiAddLevel(w http.ResponseWriter, r *http.Request) {
 	} 
 	data, _ := io.ReadAll(r.Body)
 	name := r.URL.Query().Get("name")
-	_, id, e := dbCreateLevel(mainDB, name, user.id, data)
+	desc := r.URL.Query().Get("desc")
+	_, id, e := dbCreateLevel(mainDB, name, desc, user.id, data)
 	if didFail(e, "could not create level") {
 		return
 	}
 	w.Header().Set("Kind", "AddLevel")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(strconv.Itoa(int(id))))
+}
+
+func apiPutLevel(w http.ResponseWriter, r *http.Request) {
+	user := apiValidSessionToken(r)
+	if user.id == -1 {
+		// TODO: handle error
+		return 
+	}
+	println("Putt")
+	data, _ := io.ReadAll(r.Body)
+	desc := r.URL.Query().Get("desc")
+	levelIdString := r.URL.Query().Get("id")
+	levelId, err := strconv.Atoi(levelIdString)
+	if err != nil {
+		return
+	}
+	e := dbUpdateLevel(mainDB, int64(levelId), desc, data)
+	if didFail(e, "could not create level") {
+		return
+	}
+	w.Header().Set("Kind", "PutLevel")
+	w.WriteHeader(http.StatusCreated)
 }

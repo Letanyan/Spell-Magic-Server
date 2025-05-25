@@ -5,6 +5,7 @@ import "database/sql"
 type Level struct {
 	Id int64
 	Name string
+	Description string
 	UserId int64
 	Data []byte
 }
@@ -25,6 +26,7 @@ func dbCreateLevelsTable(db *sql.DB) {
 	CREATE TABLE IF NOT EXISTS Levels (
 		id integer not null primary key,
 		name text,
+		description text,
 		userId integer,
 		data blob
 	);
@@ -37,11 +39,11 @@ func dbCreateLevelsTable(db *sql.DB) {
 
 func dbScanLevel(row *sql.Row) (Level, error) {
 	result := Level { Id: -1 }
-	err := row.Scan(&result.Id, &result.Name, &result.UserId, &result.Data)
+	err := row.Scan(&result.Id, &result.Name, &result.Description, &result.UserId, &result.Data)
 	return result, err
 }
 
-func dbCreateLevel(db *sql.DB, name string, userId int64, data []byte) (Level, int64, error) {
+func dbCreateLevel(db *sql.DB, name string, description string, userId int64, data []byte) (Level, int64, error) {
 	level := Level { Id: -1 }
 	user := dbFindUserWithId(db, userId)
 
@@ -50,8 +52,8 @@ func dbCreateLevel(db *sql.DB, name string, userId int64, data []byte) (Level, i
 	}
 
 	statement := `
-	INSERT INTO Levels (name, userId, data) 
-	VALUES (?, ?, ?) RETURNING id, name, userId, data
+	INSERT INTO Levels (name, description, userId, data) 
+	VALUES (?, ?, ?, ?) RETURNING id, name, description, userId, data
 	`
 	stmt, err := db.Prepare(statement)
 	if didFail(err, "could not prepare statement. SQL: ", statement) {
@@ -59,7 +61,7 @@ func dbCreateLevel(db *sql.DB, name string, userId int64, data []byte) (Level, i
 	}
 	defer stmt.Close()
 	
-	row := stmt.QueryRow(name, userId, data)
+	row := stmt.QueryRow(name, description, userId, data)
 	level, err = dbScanLevel(row)
 
 	return level, level.Id, err
@@ -84,4 +86,20 @@ func dbGetLevel(db *sql.DB, id int64) Level {
 	} else {
 		return level
 	}
+}
+
+func dbUpdateLevel(db *sql.DB, levelId int64, description string, data []byte) error {
+	statement := `
+	UPDATE Levels SET description=?, data=?
+	WHERE id=?
+	`
+	stmt, err := db.Prepare(statement)
+	if didFail(err, "could not prepare statement. SQL: ", statement) {
+		return err
+	}
+	defer stmt.Close()
+	
+	_, err = stmt.Exec(description, data, levelId)
+
+	return err
 }

@@ -83,9 +83,8 @@ func generateRandomString(length int) string {
 	return result
 }
 
-func dbCreateUser(db *sql.DB, password string) (User, string, error) {
+func dbCreateUser(db *sql.DB, name string, password string) (User, string, error) {
 	user := User { id: -1 }
-	name := hashText(generateRandomString(20))
 
 	statement := `
 	INSERT INTO Users (name, password) 
@@ -127,6 +126,27 @@ func dbFindUserWithName(db *sql.DB, name string) (User, error) {
 	return dbScanUser(row)
 }
 
+func dbUserWithNameExists(db *sql.DB, name string) bool {
+	statement := `
+	SELECT name
+	FROM Users 
+	WHERE name=?
+	`
+	stmt, err := db.Prepare(statement)
+	if err != nil {
+		return false
+	}
+	defer stmt.Close()
+
+	row := stmt.QueryRow(name)
+	user, err := dbScanUser(row)
+	if err != nil {
+		return false
+	}
+
+	return user.id != -1
+}
+
 func dbFindUserWithId(db *sql.DB, id int64) User {
 	statement := `
 	SELECT id, name, password
@@ -148,6 +168,22 @@ func dbFindUserWithId(db *sql.DB, id int64) User {
 	}
 }
 
+func dbRemoveUserAuth(db *sql.DB, id int64) {
+	statement := `
+	DELETE FROM UsersAuth WHERE user_id=?
+	`
+	stmt, err := db.Prepare(statement)
+	if didFail(err, "could not prepare insert into auth statement. SQL: ", statement) {
+		return
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(id)
+	if didFail(err, "could not execute prepared statement. SQL: ", statement) {
+		return
+	}
+}
+
 func dbSignInUser(db *sql.DB, name string, password string) (User, string, error) {
 	user, err := dbFindUserWithName(db, name)
 	if err != nil {
@@ -157,6 +193,8 @@ func dbSignInUser(db *sql.DB, name string, password string) (User, string, error
 	if user.password != hashText(password) {
 		return user, "", ErrUserIncorrectPassword
 	}
+
+	dbRemoveUserAuth(db, user.id)
 
 	statement := `
 	INSERT INTO UsersAuth (session_token, user_id)
@@ -214,24 +252,6 @@ func dbSignOutUserSession(db *sql.DB, sessionToken string) {
 	defer stmt.Close()
 
 	_, err = stmt.Exec(sessionToken)
-	if didFail(err, "could not exec query. SQL: ", statement) {
-		return
-	}
-}
-
-func dbUpdateUserAddress(db *sql.DB, userId int64, home string, work string) {
-	statement := `
-	UPDATE Users
-	SET home_address=?, work_address=?
-	WHERE id=?;
-	`
-	stmt, err := db.Prepare(statement)
-	if didFail(err, "could not prepare find user session token. SQL: ", statement) {
-		return
-	}
-	defer stmt.Close()
-
-	_, err = stmt.Exec(home, work, userId)
 	if didFail(err, "could not exec query. SQL: ", statement) {
 		return
 	}
