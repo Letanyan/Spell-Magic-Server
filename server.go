@@ -42,6 +42,7 @@ func serverInit() {
 	mux.HandleFunc("POST /api/v1/level/{$}", wrappers(apiAddLevel))
 	mux.HandleFunc("GET /api/v1/level/{$}", wrappers(apiGetLevel))
 	mux.HandleFunc("PUT /api/v1/level/{$}", wrappers(apiPutLevel))
+	mux.HandleFunc("GET /api/v1/levels/{$}", wrappers(apiGetLevels))
 
 	mux.HandleFunc("GET /ping/{$}", wrappers(apiPing))
 
@@ -77,7 +78,6 @@ func apiUserSignIn(w http.ResponseWriter, r *http.Request) {
 	
 	_, session_token, err := dbSignInUser(mainDB, name, password)
 	if err == nil {
-		fmt.Println("in: ", session_token)
 		w.Header().Set("Kind", "SignIn")
 		w.Header().Set("Set-Cookie", fmt.Sprintf("user_token=%s; SameSite=Strict; Path=/", session_token))
 		w.Write([]byte(session_token))
@@ -88,7 +88,6 @@ func apiUserSignIn(w http.ResponseWriter, r *http.Request) {
 		// TODO: handle error
 		return
 	}
-	fmt.Println("in: ", session_token)
 	w.Header().Set("Kind", "SignIn")
 	w.Header().Set("Set-Cookie", fmt.Sprintf("user_token=%s; SameSite=Strict; Path=/", session_token))
 	w.Write([]byte(session_token))
@@ -174,4 +173,23 @@ func apiPutLevel(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Kind", "PutLevel")
 	w.WriteHeader(http.StatusCreated)
+}
+
+func apiGetLevels(w http.ResponseWriter, r *http.Request) {
+	levelLimitString := r.URL.Query().Get("limit")
+	levelPageString := r.URL.Query().Get("page")
+	levelLimit, err := strconv.Atoi(levelLimitString)
+	if err != nil {
+		return
+	}
+	levelPage, err := strconv.Atoi(levelPageString)
+	if err != nil {
+		return
+	}
+	levels, new_page := dbGetLevels(mainDB, LevelSortRecent, levelPage, levelLimit)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Kind", "GetLevels")
+	w.Header().Set("Page", strconv.Itoa(new_page))
+    w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(levels)
 }

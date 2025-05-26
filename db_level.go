@@ -10,6 +10,12 @@ type Level struct {
 	Data []byte
 }
 
+type LevelItem struct {
+	Id int64
+	Name string
+	UserName string
+}
+
 type LevelError int8
 const (
 	ErrLevelCouldNotCreate LevelError = 1
@@ -69,7 +75,7 @@ func dbCreateLevel(db *sql.DB, name string, description string, userId int64, da
 
 func dbGetLevel(db *sql.DB, id int64) Level {
 	statement := `
-	SELECT id, name, userId, data
+	SELECT id, name, description, userId, data
 	FROM Levels
 	WHERE id=?
 	`
@@ -102,4 +108,49 @@ func dbUpdateLevel(db *sql.DB, levelId int64, description string, data []byte) e
 	_, err = stmt.Exec(description, data, levelId)
 
 	return err
+}
+
+func dbScanLevelItem(rows *sql.Rows) (LevelItem, error) {
+	result := LevelItem { Id: -1 }
+	err := rows.Scan(&result.Id, &result.Name, &result.UserName)
+	return result, err
+}
+
+type LevelSort int8
+const (
+	LevelSortRecent LevelSort = 1
+	LevelSortBest LevelSort = 2
+)
+func dbGetLevels(db *sql.DB, sorting LevelSort, page int, limit int) ([]LevelItem, int) {
+	statement := `
+	SELECT lvl.id, lvl.name, usr.name
+	FROM Levels lvl INNER JOIN Users usr ON usr.id = lvl.userId
+	LIMIT ? OFFSET ?
+	`
+	stmt, err := db.Prepare(statement)
+	if didFail(err, "could not prepare find level with id statement. SQL: ", statement) {
+		return []LevelItem{}, 0
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(limit, page * limit)
+	if didFail(err, "could not query. SQL: ", statement) {
+		return []LevelItem{}, 0
+	}
+
+	result := []LevelItem{}
+	count := 0
+	for rows.Next() {
+		item, _ := dbScanLevelItem(rows)
+		result = append(result, item)
+		count += 1
+	}
+	rows.Close()
+	
+	new_page := page
+	if count > 0 {
+		new_page += 1
+	}
+
+	return result, new_page
 }
