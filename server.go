@@ -43,6 +43,11 @@ func serverInit() {
 	mux.HandleFunc("GET /api/v1/level/{$}", wrappers(apiGetLevel))
 	mux.HandleFunc("PUT /api/v1/level/{$}", wrappers(apiPutLevel))
 	mux.HandleFunc("GET /api/v1/levels/{$}", wrappers(apiGetLevels))
+	// LevelUserData
+	mux.HandleFunc("POST /api/v1/level/data/{$}", wrappers(apiAddLevelUserData))
+	mux.HandleFunc("PUT /api/v1/level/data/{$}", wrappers(apiPutLevelUserData))
+	mux.HandleFunc("PUT /api/v1/level/data/start/{$}", wrappers(apiBeginPlayLevel))
+	mux.HandleFunc("PUT /api/v1/level/data/save/{$}", wrappers(apiSavePlayLevel))
 
 	mux.HandleFunc("GET /ping/{$}", wrappers(apiPing))
 
@@ -128,7 +133,7 @@ func apiGetLevel(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	level := dbGetLevel(mainDB, int64(levelId))
+	level := dbGetLevel(mainDB, int64(levelId), user.id)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Kind", "GetLevel")
     w.WriteHeader(http.StatusCreated)
@@ -159,7 +164,6 @@ func apiPutLevel(w http.ResponseWriter, r *http.Request) {
 		// TODO: handle error
 		return 
 	}
-	println("Putt")
 	data, _ := io.ReadAll(r.Body)
 	desc := r.URL.Query().Get("desc")
 	levelIdString := r.URL.Query().Get("id")
@@ -167,7 +171,7 @@ func apiPutLevel(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	e := dbUpdateLevel(mainDB, int64(levelId), desc, data)
+	e := dbUpdateLevel(mainDB, user, int64(levelId), desc, data)
 	if didFail(e, "could not create level") {
 		return
 	}
@@ -178,6 +182,8 @@ func apiPutLevel(w http.ResponseWriter, r *http.Request) {
 func apiGetLevels(w http.ResponseWriter, r *http.Request) {
 	levelLimitString := r.URL.Query().Get("limit")
 	levelPageString := r.URL.Query().Get("page")
+	levelUserString := r.URL.Query().Get("user")
+	levelNameString := r.URL.Query().Get("name")
 	levelLimit, err := strconv.Atoi(levelLimitString)
 	if err != nil {
 		return
@@ -186,10 +192,104 @@ func apiGetLevels(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	levels, new_page := dbGetLevels(mainDB, LevelSortRecent, levelPage, levelLimit)
+	var levels []LevelItem
+	var new_page int
+	if len(levelNameString) > 0 {
+		levels, new_page = dbGetLevelsWithName(mainDB, levelNameString, LevelSortRecent, levelPage, levelLimit)
+	} else if len(levelUserString) > 0 {
+		levels, new_page = dbGetLevelsFromUser(mainDB, levelUserString, LevelSortRecent, levelPage, levelLimit)
+	} else {
+		levels, new_page = dbGetLevels(mainDB, LevelSortRecent, levelPage, levelLimit)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Kind", "GetLevels")
 	w.Header().Set("Page", strconv.Itoa(new_page))
     w.WriteHeader(http.StatusCreated)
     json.NewEncoder(w).Encode(levels)
+}
+
+func apiAddLevelUserData(w http.ResponseWriter, r *http.Request) {
+	user := apiValidSessionToken(r)
+	if user.id == -1 {
+		// TODO: handle error
+		return 
+	}
+	levelIdString := r.URL.Query().Get("levelId")
+	levelId, err := strconv.Atoi(levelIdString)
+	if err != nil {
+		return
+	}
+	e := dbCreateLevelUserData(mainDB, int64(levelId), user.id)
+	if didFail(e, "could not create level user data") {
+		return
+	}
+	w.Header().Set("Kind", "AddLevelUserData")
+	w.WriteHeader(http.StatusCreated)
+}
+
+func apiPutLevelUserData(w http.ResponseWriter, r *http.Request) {
+	user := apiValidSessionToken(r)
+	if user.id == -1 {
+		// TODO: handle error
+		return 
+	}
+	levelIdString := r.URL.Query().Get("levelId")
+	levelId, err := strconv.Atoi(levelIdString)
+	if err != nil {
+		return
+	}
+	voteString := r.URL.Query().Get("vote")
+	voteAmount := 0
+	if voteString == "upvote" {
+		voteAmount = 1
+	} else if voteString == "downvote" {
+		voteAmount = -1
+	}
+
+	e := dbUpdateLevelUserData(mainDB, int64(levelId), user.id, int64(voteAmount))
+	if didFail(e, "could not update level user data") {
+		return
+	}
+	w.Header().Set("Kind", "PutLevelUserData")
+	w.WriteHeader(http.StatusCreated)
+}
+
+func apiBeginPlayLevel(w http.ResponseWriter, r *http.Request) {
+	user := apiValidSessionToken(r)
+	if user.id == -1 {
+		// TODO: handle error
+		return 
+	}
+	levelIdString := r.URL.Query().Get("levelId")
+	levelId, err := strconv.Atoi(levelIdString)
+	if err != nil {
+		return
+	}
+
+	e := dbBeginLevelUserDataPlaytime(mainDB, int64(levelId), user.id)
+	if didFail(e, "could not begin level user data start play") {
+		return
+	}
+	w.Header().Set("Kind", "PutLevelUserData")
+	w.WriteHeader(http.StatusCreated)
+}
+
+func apiSavePlayLevel(w http.ResponseWriter, r *http.Request) {
+	user := apiValidSessionToken(r)
+	if user.id == -1 {
+		// TODO: handle error
+		return 
+	}
+	levelIdString := r.URL.Query().Get("levelId")
+	levelId, err := strconv.Atoi(levelIdString)
+	if err != nil {
+		return
+	}
+
+	e := dbSaveLevelUserDataPlaytime(mainDB, int64(levelId), user.id)
+	if didFail(e, "could not begin level user data start play") {
+		return
+	}
+	w.Header().Set("Kind", "PutLevelUserData")
+	w.WriteHeader(http.StatusCreated)
 }
