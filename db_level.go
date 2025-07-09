@@ -71,28 +71,28 @@ func dbScanLevel(row *sql.Row) (Level, error) {
 	return result, err
 }
 
-func dbCreateLevel(db *sql.DB, name string, description string, userId int64, data []byte) (Level, int64, error) {
-	level := Level { Id: -1 }
+func dbCreateLevel(db *sql.DB, name string, description string, userId int64, data []byte) (int64, error) {
 	user := dbFindUserWithId(db, userId)
 
 	if user.id == -1 {
-		return level, -1, ErrUserAlreadyExists
+		return -1, ErrUserAlreadyExists
 	}
 
 	statement := `
 	INSERT INTO Levels (name, description, userId, data) 
-	VALUES (?, ?, ?, ?) RETURNING id, name, description, userId, data
+	VALUES (?, ?, ?, ?) RETURNING id
 	`
 	stmt, err := db.Prepare(statement)
 	if didFail(err, "could not prepare statement. SQL: ", statement) {
-		return level, -1, ErrUserCouldNotCreate
+		return -1, ErrUserCouldNotCreate
 	}
 	defer stmt.Close()
 	
 	row := stmt.QueryRow(name, description, userId, data)
-	level, err = dbScanLevel(row)
+	var id int64
+	err = row.Scan(&id)
 
-	return level, level.Id, err
+	return id, err
 }
 
 func dbGetLevel(db *sql.DB, id int64, userId int64) Level {

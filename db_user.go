@@ -45,7 +45,7 @@ func dbCreateUserTable(db *sql.DB) {
 	statement := `
 	CREATE TABLE IF NOT EXISTS Users (
 		id integer not null primary key,
-		name text,
+		name text UNIQUE,
 		password text
 	);
 	`
@@ -83,12 +83,12 @@ func generateRandomString(length int) string {
 	return result
 }
 
-func dbCreateUser(db *sql.DB, name string, password string) (User, string, error) {
+func dbCreateUser(db *sql.DB, password string) (User, string, error) {
 	user := User { id: -1 }
 
 	statement := `
 	INSERT INTO Users (name, password) 
-	VALUES (?, ?)
+	VALUES (NULL, ?) RETURNING id, COALESCE(name, ''), password
 	`
 	stmt, err := db.Prepare(statement)
 	if didFail(err, "could not prepare statement. SQL: ", statement) {
@@ -96,12 +96,16 @@ func dbCreateUser(db *sql.DB, name string, password string) (User, string, error
 	}
 	defer stmt.Close()
 	
-	_, err = stmt.Exec(name, hashText(password))
+	row := stmt.QueryRow(hashText(password))
 	if didFail(err, "could not execute prepared statement. SQL: ", statement) {
 		return user, "", ErrUserCouldNotCreate
 	}
+	user, err = dbScanUser(row)
+	if didFail(err, "could not read user") {
+		return user, "", ErrUserCouldNotCreate
+	}
 
-	return dbSignInUser(db, name, password)
+	return dbSignInUser(db, user.id, password)
 }
 
 func dbScanUser(row *sql.Row) (User, error) {
@@ -112,7 +116,7 @@ func dbScanUser(row *sql.Row) (User, error) {
 
 func dbFindUserWithName(db *sql.DB, name string) (User, error) {
 	statement := `
-	SELECT id, name, password
+	SELECT id, COALESCE(name, ''), password
 	FROM Users 
 	WHERE name=?
 	`
@@ -128,7 +132,7 @@ func dbFindUserWithName(db *sql.DB, name string) (User, error) {
 
 func dbUserWithNameExists(db *sql.DB, name string) bool {
 	statement := `
-	SELECT name
+	SELECT COALESCE(name, '')
 	FROM Users 
 	WHERE name=?
 	`
@@ -149,7 +153,7 @@ func dbUserWithNameExists(db *sql.DB, name string) bool {
 
 func dbFindUserWithId(db *sql.DB, id int64) User {
 	statement := `
-	SELECT id, name, password
+	SELECT id, COALESCE(name, ''), password
 	FROM Users 
 	WHERE id=?
 	`
@@ -184,12 +188,8 @@ func dbRemoveUserAuth(db *sql.DB, id int64) {
 	}
 }
 
-func dbSignInUser(db *sql.DB, name string, password string) (User, string, error) {
-	user, err := dbFindUserWithName(db, name)
-	if err != nil {
-		return user, "", ErrUserFailedSignIn
-	}
-
+func dbSignInUser(db *sql.DB, id int64, password string) (User, string, error) {
+	user := dbFindUserWithId(db, id)
 	if user.password != hashText(password) {
 		return user, "", ErrUserIncorrectPassword
 	}
@@ -255,4 +255,24 @@ func dbSignOutUserSession(db *sql.DB, sessionToken string) {
 	if didFail(err, "could not exec query. SQL: ", statement) {
 		return
 	}
+}
+
+func dbUserUpdateName(db *sql.DB, username string, userid int64) {
+	statement := `
+	UPDATE Users SET name=? WHERE id=?;
+	`
+	stmt, err := db.Prepare(statement)
+	if didFail(err, "could not prepare update user name. SQL: ", statement) {
+		return
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(username, userid)
+	if didFail(err, "could not exec query. SQL: ", statement) {
+		return
+	}
+}
+
+type NullString struct {
+    String string
 }

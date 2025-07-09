@@ -38,6 +38,7 @@ func serverInit() {
     mux.HandleFunc("POST /api/v1/user/sign_up/{$}", wrappers(apiUserSignUp))
     mux.HandleFunc("POST /api/v1/user/sign_in/{$}", wrappers(apiUserSignIn))
     mux.HandleFunc("POST /api/v1/user/sign_out/{$}", wrappers(apiUserSignOut))
+    mux.HandleFunc("POST /api/v1/user/update_name/{$}", wrappers(apiUserUpdateName))
 	// Levels
 	mux.HandleFunc("POST /api/v1/level/{$}", wrappers(apiAddLevel))
 	mux.HandleFunc("GET /api/v1/level/{$}", wrappers(apiGetLevel))
@@ -67,28 +68,38 @@ func apiPing(w http.ResponseWriter, r *http.Request) {
 // ----------------------------------------------------------------------
 
 func apiUserSignUp(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
-	password := r.FormValue("password")
-	_, session_token, err := dbCreateUser(mainDB, name, password)
+	data, _ := io.ReadAll(r.Body)
+	var form map[string]any
+	json.Unmarshal(data, &form)
+	password := form["password"].(string)
+
+	user, session_token, err := dbCreateUser(mainDB, password)
 	if didFail(err) {
 		// TODO: handle error
 		return
 	}
+	w.Header().Set("Kind", "SignUp")
 	w.Header().Add("Set-Cookie", fmt.Sprintf("user_token=%s; SameSite=Strict; Path=/", session_token))
+	w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(map[string]any{"session_id": session_token, "user_id": user.id})
 }
 
 func apiUserSignIn(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
-	password := r.FormValue("password")
+	data, _ := io.ReadAll(r.Body)
+	var form map[string]any
+	json.Unmarshal(data, &form)
+
+	id := int64(form["userid"].(float64))
+	password := form["password"].(string)
 	
-	_, session_token, err := dbSignInUser(mainDB, name, password)
+	_, session_token, err := dbSignInUser(mainDB, int64(id), password)
 	if err == nil {
 		w.Header().Set("Kind", "SignIn")
 		w.Header().Set("Set-Cookie", fmt.Sprintf("user_token=%s; SameSite=Strict; Path=/", session_token))
 		w.Write([]byte(session_token))
 		return
 	}
-	_, session_token, err = dbCreateUser(mainDB, name, password)
+	_, session_token, err = dbCreateUser(mainDB, password)
 	if didFail(err) {
 		// TODO: handle error
 		return
@@ -116,6 +127,19 @@ func apiUserSignOut(w http.ResponseWriter, r *http.Request) {
 	session := r.CookiesNamed("user_token")
 	dbSignOutUserSession(mainDB, session[0].Value)
 	w.Header().Add("Set-Cookie", "user_token=deleted; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict; Path=/")
+}
+
+func apiUserUpdateName(w http.ResponseWriter, r *http.Request) {
+	user := apiValidSessionToken(r)
+	if user.id == -1 {
+		// TODO: handle error
+		return 
+	}
+	data, _ := io.ReadAll(r.Body)
+	var form map[string]any
+	json.Unmarshal(data, &form)
+	name := form["name"].(string)
+	dbUserUpdateName(mainDB, name, user.id)
 }
 
 // ----------------------------------------------------------------------
@@ -149,7 +173,7 @@ func apiAddLevel(w http.ResponseWriter, r *http.Request) {
 	data, _ := io.ReadAll(r.Body)
 	name := r.URL.Query().Get("name")
 	desc := r.URL.Query().Get("desc")
-	_, id, e := dbCreateLevel(mainDB, name, desc, user.id, data)
+	id, e := dbCreateLevel(mainDB, name, desc, user.id, data)
 	if didFail(e, "could not create level") {
 		return
 	}
