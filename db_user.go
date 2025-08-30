@@ -114,6 +114,12 @@ func dbScanUser(row *sql.Row) (User, error) {
 	return result, err
 }
 
+func dbScanUserRows(rows *sql.Rows) (User, error) {
+	result := User { id: -1 }
+	err := rows.Scan(&result.id, &result.name, &result.password)
+	return result, err
+}
+
 func dbFindUserWithName(db *sql.DB, name string) (User, error) {
 	statement := `
 	SELECT id, COALESCE(name, ''), password
@@ -163,13 +169,22 @@ func dbFindUserWithId(db *sql.DB, id int64) User {
 	}
 	defer stmt.Close()
 
-	row := stmt.QueryRow(id)
-	user, err := dbScanUser(row)
+	rows, err := stmt.Query(id)
 	if didFail(err) {
-		return User {id: -1}
-	} else {
-		return user
+		return User { id: -1 }
 	}
+
+	for rows.Next() {
+		user, err := dbScanUserRows(rows)
+		rows.Close()
+		if didFail(err) {
+			return User { id: - 1 }
+		} else {
+			return user
+		}
+	}
+
+	return User { id: -1 }
 }
 
 func dbRemoveUserAuth(db *sql.DB, id int64) {

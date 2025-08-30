@@ -192,8 +192,8 @@ func dbGetLevelsWithName(db *sql.DB, search string, sorting LevelSort, page int,
 	FROM Levels lvl 
 		INNER JOIN Users usr ON usr.id = lvl.userId
 		FULL JOIN LevelUserData data ON lvl.id = data.levelId
-	GROUP BY lvl.id
 	WHERE lvl.name LIKE ?
+	GROUP BY lvl.id
 	LIMIT ? OFFSET ?
 	`
 	stmt, err := db.Prepare(statement)
@@ -221,8 +221,8 @@ func dbGetLevelsFromUser(db *sql.DB, search string, sorting LevelSort, page int,
 	FROM Levels lvl 
 		INNER JOIN Users usr ON usr.id = lvl.userId
 		FULL JOIN LevelUserData data ON lvl.id = data.levelId
-	GROUP BY lvl.id
 	WHERE usr.name LIKE ?
+	GROUP BY lvl.id
 	LIMIT ? OFFSET ?
 	`
 	stmt, err := db.Prepare(statement)
