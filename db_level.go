@@ -9,6 +9,7 @@ type Level struct {
 	Id int64
 	Name string
 	Description string
+	MaxBufferSize int64
 	UserId int64
 	UserVote int64
 	UserPlaytime float64
@@ -41,7 +42,8 @@ func dbCreateLevelsTable(db *sql.DB) {
 		name text DEFAULT '',
 		description text DEFAULT '',
 		userId integer NOT NULL,
-		data blob
+		data blob,
+		max_buffer_size INTEGER DEFAULT -1
 	);
 	`
 	_, err := db.Exec(statement)
@@ -67,11 +69,11 @@ func dbCreateLevelsTable(db *sql.DB) {
 
 func dbScanLevel(row *sql.Row) (Level, error) {
 	result := Level { Id: -1 }
-	err := row.Scan(&result.Id, &result.Name, &result.Description, &result.UserId, &result.UserVote, &result.UserPlaytime, &result.Data)
+	err := row.Scan(&result.Id, &result.Name, &result.Description, &result.MaxBufferSize, &result.UserId, &result.UserVote, &result.UserPlaytime, &result.Data)
 	return result, err
 }
 
-func dbCreateLevel(db *sql.DB, name string, description string, userId int64, data []byte) (int64, error) {
+func dbCreateLevel(db *sql.DB, name string, description string, userId int64, maxBufferSize int64, data []byte) (int64, error) {
 	user := dbFindUserWithId(db, userId)
 
 	if user.id == -1 {
@@ -79,8 +81,8 @@ func dbCreateLevel(db *sql.DB, name string, description string, userId int64, da
 	}
 
 	statement := `
-	INSERT INTO Levels (name, description, userId, data) 
-	VALUES (?, ?, ?, ?) RETURNING id
+	INSERT INTO Levels (name, description, userId, max_buffer_size, data) 
+	VALUES (?, ?, ?, ?, ?) RETURNING id
 	`
 	stmt, err := db.Prepare(statement)
 	if didFail(err, "could not prepare statement. SQL: ", statement) {
@@ -88,7 +90,7 @@ func dbCreateLevel(db *sql.DB, name string, description string, userId int64, da
 	}
 	defer stmt.Close()
 	
-	row := stmt.QueryRow(name, description, userId, data)
+	row := stmt.QueryRow(name, description, userId, maxBufferSize, data)
 	var id int64
 	err = row.Scan(&id)
 
@@ -97,7 +99,7 @@ func dbCreateLevel(db *sql.DB, name string, description string, userId int64, da
 
 func dbGetLevel(db *sql.DB, id int64, userId int64) Level {
 	statement := `
-	SELECT lvl.id, lvl.name, lvl.description, lvl.userId, IFNULL(data.vote, 0), IFNULL(data.playtime, 0.0), lvl.data
+	SELECT lvl.id, lvl.name, lvl.description, lvl.max_buffer_size, lvl.userId, IFNULL(data.vote, 0), IFNULL(data.playtime, 0.0), lvl.data
 	FROM Levels lvl LEFT JOIN LevelUserData data ON data.levelId = lvl.id AND data.userId = ?
 	WHERE lvl.id=?
 	`
@@ -116,9 +118,9 @@ func dbGetLevel(db *sql.DB, id int64, userId int64) Level {
 	}
 }
 
-func dbUpdateLevel(db *sql.DB, user User, levelId int64, description string, data []byte) error {
+func dbUpdateLevel(db *sql.DB, user User, levelId int64, description string, maxBufferSize int64, data []byte) error {
 	statement := `
-	UPDATE Levels SET description=?, data=?
+	UPDATE Levels SET description=?, max_buffer_size=?, data=?
 	WHERE id=? AND userId=?
 	`
 	stmt, err := db.Prepare(statement)
@@ -127,7 +129,7 @@ func dbUpdateLevel(db *sql.DB, user User, levelId int64, description string, dat
 	}
 	defer stmt.Close()
 	
-	_, err = stmt.Exec(description, data, levelId, user.id)
+	_, err = stmt.Exec(description, maxBufferSize, data, levelId, user.id)
 
 	return err
 }
@@ -148,6 +150,7 @@ func dbGetLevelItems(rows *sql.Rows) ([]LevelItem, int) {
 	count := 0
 	for rows.Next() {
 		item, _ := dbScanLevelItem(rows)
+		fmt.Printf("%v\n", item)
 		result = append(result, item)
 		count += 1
 	}

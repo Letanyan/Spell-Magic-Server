@@ -91,22 +91,22 @@ func apiUserSignIn(w http.ResponseWriter, r *http.Request) {
 
 	id := int64(form["userid"].(float64))
 	password := form["password"].(string)
-	
-	_, session_token, err := dbSignInUser(mainDB, int64(id), password)
+
+	user, session_token, err := dbSignInUser(mainDB, int64(id), password)
 	if err == nil {
 		w.Header().Set("Kind", "SignIn")
 		w.Header().Set("Set-Cookie", fmt.Sprintf("user_token=%s; SameSite=Strict; Path=/", session_token))
-		w.Write([]byte(session_token))
+		fmt.Fprintf(w, "%s\n%d", session_token, user.id)
 		return
 	}
-	_, session_token, err = dbCreateUser(mainDB, password)
+	user, session_token, err = dbCreateUser(mainDB, password)
 	if didFail(err) {
 		// TODO: handle error
 		return
 	}
 	w.Header().Set("Kind", "SignIn")
 	w.Header().Set("Set-Cookie", fmt.Sprintf("user_token=%s; SameSite=Strict; Path=/", session_token))
-	w.Write([]byte(session_token))
+	fmt.Fprintf(w, "%s\n%d", session_token, user.id)
 }
 
 func apiValidSessionToken(r *http.Request) User {
@@ -173,7 +173,12 @@ func apiAddLevel(w http.ResponseWriter, r *http.Request) {
 	data, _ := io.ReadAll(r.Body)
 	name := r.URL.Query().Get("name")
 	desc := r.URL.Query().Get("desc")
-	id, e := dbCreateLevel(mainDB, name, desc, user.id, data)
+	buff_text := r.URL.Query().Get("datasize")
+	buff, err := strconv.Atoi(buff_text)
+	if err != nil {
+		return
+	}
+	id, e := dbCreateLevel(mainDB, name, desc, user.id, int64(buff), data)
 	if didFail(e, "could not create level") {
 		return
 	}
@@ -195,7 +200,12 @@ func apiPutLevel(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	e := dbUpdateLevel(mainDB, user, int64(levelId), desc, data)
+	buff_text := r.URL.Query().Get("datasize")
+	buff, err := strconv.Atoi(buff_text)
+	if err != nil {
+		return
+	}
+	e := dbUpdateLevel(mainDB, user, int64(levelId), desc, int64(buff), data)
 	if didFail(e, "could not create level") {
 		return
 	}
