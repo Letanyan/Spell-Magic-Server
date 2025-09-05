@@ -53,7 +53,12 @@ func serverInit() {
 	mux.HandleFunc("GET /ping/{$}", wrappers(apiPing))
 
 
-	err := http.ListenAndServe("127.0.0.1:8181", mux)
+	var err error
+	if isDebug {
+		err = http.ListenAndServe("127.0.0.1:8181", mux)
+	} else {
+		err = http.ListenAndServe(":8181", mux)
+	}
 	if didFail(err) {
 		log.Fatal(err)
 	}
