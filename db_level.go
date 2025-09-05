@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 )
 
 type Level struct {
@@ -98,7 +97,7 @@ func dbCreateLevel(db *sql.DB, name string, description string, userId int64, ma
 }
 
 func dbLevelExists(db *sql.DB, id int64) bool {
-	statement := `SELECT lvl.id FROM Levels WHERE lvl.id = ?`
+	statement := `SELECT lvl.id FROM Levels lvl WHERE lvl.id = ?`
 	stmt, err := db.Prepare(statement)
 	if didFail(err, "could not prepare level exists statement: ", statement) {
 		return false
@@ -164,7 +163,6 @@ func dbGetLevelItems(rows *sql.Rows) ([]LevelItem, int) {
 	count := 0
 	for rows.Next() {
 		item, _ := dbScanLevelItem(rows)
-		fmt.Printf("%v\n", item)
 		result = append(result, item)
 		count += 1
 	}
@@ -226,9 +224,6 @@ func dbGetLevelsWithName(db *sql.DB, search string, sorting LevelSort, page int,
 	
 	result, pageIncrement := dbGetLevelItems(rows) 
 	new_page := page + pageIncrement
-	for _, item := range result {
-		fmt.Println(item)
-	}
 	return result, new_page
 }
 
