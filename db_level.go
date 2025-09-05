@@ -97,6 +97,20 @@ func dbCreateLevel(db *sql.DB, name string, description string, userId int64, ma
 	return id, err
 }
 
+func dbLevelExists(db *sql.DB, id int64) bool {
+	statement := `SELECT lvl.id FROM Levels WHERE lvl.id = ?`
+	stmt, err := db.Prepare(statement)
+	if didFail(err, "could not prepare level exists statement: ", statement) {
+		return false
+	}
+	defer stmt.Close()
+
+	row := stmt.QueryRow(id)
+	var level int64
+	err = row.Scan(&level)
+	return err == nil
+}
+
 func dbGetLevel(db *sql.DB, id int64, userId int64) Level {
 	statement := `
 	SELECT lvl.id, lvl.name, lvl.description, lvl.max_buffer_size, lvl.userId, IFNULL(data.vote, 0), IFNULL(data.playtime, 0.0), lvl.data

@@ -194,6 +194,7 @@ func apiPutLevel(w http.ResponseWriter, r *http.Request) {
 		return 
 	}
 	data, _ := io.ReadAll(r.Body)
+	name := r.URL.Query().Get("name")
 	desc := r.URL.Query().Get("desc")
 	levelIdString := r.URL.Query().Get("id")
 	levelId, err := strconv.Atoi(levelIdString)
@@ -205,12 +206,20 @@ func apiPutLevel(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	e := dbUpdateLevel(mainDB, user, int64(levelId), desc, int64(buff), data)
+	var e error
+	var id int64
+	if dbLevelExists(mainDB, int64(levelId)) {
+		e = dbUpdateLevel(mainDB, user, int64(levelId), desc, int64(buff), data)
+		id = int64(levelId)
+	} else {
+		id, e = dbCreateLevel(mainDB, name, desc, user.id, int64(buff), data)
+	}
 	if didFail(e, "could not create level") {
 		return
 	}
 	w.Header().Set("Kind", "PutLevel")
 	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(strconv.Itoa(int(id))))
 }
 
 func apiGetLevels(w http.ResponseWriter, r *http.Request) {
